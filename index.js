@@ -5,78 +5,36 @@ var mumbleutil = require('./lib/util');
 
 var MumbleConnection = require('./lib/MumbleConnection');
 var MumbleClient = require('./lib/MumbleClient');
+var MumbleConnectionManager = require('./lib/MumbleConnectionManager');
 
 exports.MumbleConnection = MumbleConnection;
+exports.MumbleConnectionManager = MumbleConnectionManager;
+
 exports.celtVersions = mumbleutil.celtVersions;
-
-/**
- * @summary Connection manager
- *
- * @description
- * A connection tool to decouple connecting to the server
- * from the module itself.
- *
- * The URL specified to the connection manager the Mumble server address.
- * It can be either host with optional port specified with `host:port`
- * or then the full `mumble://`.
- *
- * @constructor
- * @param {String} url - Mumble server address.
- * @param {Object} options - TLS options.
- */
-function ConnectionManager(url, options) {
-  this.server = mumbleutil.parseUrl( url );
-
-  this.options = options || {};
-
-  // If the options.rejectUnauthorized isn't defined default it to false.
-  // We'll do this since most Mumble server certs are self signed anyway.
-  //
-  // The if catches null, false and other falsy values as well,
-  // but this doesn't affect anything as we set it to false anyway.
-  if( !this.options.rejectUnauthorized ) {
-      this.options.rejectUnauthorized = false;
-  }
-
-};
 
 /**
  * @summary Connect to the Mumble server.
  *
  * @description
- * Connects to the Mumble server provided in the constructor
+ * The URL specifies the Mumble server address. It can be either host with
+ * optional port specified with `host:port` or then the full `mumble://`.
  *
+ * @param {String} url - Mumble server address.
+ * @param {Object} [options] - TLS options.
  * @param {function(err,client)} done - Connection callback receiving {@link MumbleClient}.
+ *
+ * @returns {ConnectionManager} The manager used to establish the connection.
  */
-ConnectionManager.prototype.connect = function(done) {
-  var self = this;
+exports.connect = function( url, options, done ) {
 
-  self.socket = tls.connect( self.server.port, self.server.host, self.options, function ( err ) {
-    if(self.options.key !== undefined) {
-        delete self.options.key;
-    }
-    if(self.options.cert !== undefined) {
-        delete self.options.cert;
-    }
-    var connection = new MumbleConnection( self.socket, self.options );
-
-    done( null, new MumbleClient(connection) );
-    if( !connection.authSent && self.server.username ) {
-        connection.authenticate( self.server.username );
+    // Handle optional options.
+    if( typeof options === 'function' ) {
+        done = options;
+        options = {};
     }
 
-    // If path was given, wait for init to be done before moving.
-    if( self.server.path.length ) {
-        connection.once('initialized', function () {
-            connection.joinPath( self.server.path );
-        });
-    }
-
-    // The connection will now own listening for socket errors.
-    self.socket.removeListener('error', done);
-  });
-
-  self.socket.once('error', done);
+    // Establish the conneciton.
+    var manager = new MumbleConnectionManager( url, options );
+    manager.connect( done );
+    return manager;
 };
-
-exports.ConnectionManager = ConnectionManager;
